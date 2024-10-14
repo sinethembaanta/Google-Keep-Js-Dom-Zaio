@@ -8,10 +8,11 @@ class Note {
   
   class App {
     constructor() {
-      this.notes = JSON.parse(localStorage.getItem('notes')) || [];
+      this.notes = [];
       console.log(this.notes);
-      this.$selectedNoteId = ""
-      this.miniSidebar = true,
+      this.$selectedNoteId = "";
+      this.miniSidebar = true;
+      this.userId = "";
 
       this.$activeForm = document.querySelector(".active-form");
       this.$inactiveForm = document.querySelector(".inactive-form");
@@ -26,9 +27,66 @@ class Note {
       this.$closeModalFOrm = document.querySelector("#modal-btn");
       this.$sidebar = document.querySelector(".sidebar");
       this.$sidebarActiveItem = document.querySelector(".active-item");
+
+      this.$app =document.querySelector("#app");
+      this.$firebaseAuthContainer = document.querySelector("#firebaseui-auth-container");
+      this.$authUserText = document.querySelector(".auth-user");
+      this.$logoutButton = document.querySelector(".logout");
       
+      // Initialize the FirebaseUI Widget using Firebase.
+      
+      this.ui = new firebaseui.auth.AuthUI(auth);
+      this.handleAuth();
+
       this.addEventListerners();
       this.displayNotes();
+    }
+
+    handleAuth() {
+      firebase.auth().onAuthStateChanged((user) => {
+        if (user) {
+          console.log(user.uid);
+          this.userId = user.uid;
+          this.$authUserText.innerHTML = user.displayName;
+          this.redirectToApp();
+        } else {
+          this.redirectToAuth();
+        }
+      });
+    }
+
+    handleLogout() {
+      firebase.auth().signOut().then(() => {
+        this.redirectToAuth();
+      }).catch((error) => {
+        console.log("ERROR OCCURED", error);
+      });
+    }
+
+    redirectToApp() {
+      this.$firebaseAuthContainer.style.display = "none";
+      this.$app.style.display = "block";
+      this.fetchNotesFromDB();
+    }
+
+    redirectToAuth() {
+      this.$firebaseAuthContainer.style.display = "block";
+      this.$app.style.display = "none";
+
+      this.ui.start('#firebaseui-auth-container', {
+        callbacks: {
+          signInSuccessWithAuthResults: (authResult, redirectUrl) => {
+            this.userId = authResult.user.uid;
+            this.$authUserText.innerHTML = user.displayName;
+            this.redirectToApp();
+          }
+        },
+        signInOptions: [
+          firebase.auth.EmailAuthProvider.PROVIDER_ID,
+          firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+        ],
+        // Other config options...
+      });
     }
 
     addEventListerners() {
@@ -58,6 +116,10 @@ class Note {
     this.$sidebar.addEventListener("mouseout", (event) => {
       this.handleToggleSidebar();
     })
+
+    this.$logoutButton.addEventListener("click", (event) => {
+      this.handleLogout();
+    })
     }
 
     handleFormClick(event) {
@@ -76,7 +138,7 @@ class Note {
     }
 
     openActiveForm() {
-      this.$inactiveForm.style.display = "none";
+        this.$inactiveForm.style.display = "none";
         this.$activeForm.style.display = "block";
         this.$noteText.focus();
     }
@@ -123,7 +185,7 @@ class Note {
   
     addNote({ title, text }) {
       if (text != "") {
-        const newNote = new Note(cuid(), title, text);
+        const newNote = { id: cuid(), title, text};
         this.notes = [...this.notes, newNote];
         this.render();
       }
@@ -176,8 +238,42 @@ class Note {
       }
     }
 
+    fetchNotesFromDB() {
+      var docRef = db.collection("users").doc(this.userId);
+
+        docRef.get().then((doc) => {
+            if (doc.exists) {
+               console.log("Document data:", doc.data().notes);
+               this.notes = doc.data().notes;
+               this.displayNotes();
+            } else {
+             //doc.data() will be undefined in this case
+                console.log("No such document!");
+                db.collection("users").doc(this.userId).set({
+                  notes: []
+                })
+                  .then((docRef) => {
+                  console.log("User successfully created!");
+                })
+                  .catch((error) => {
+                  console.error("Error adding document: ", error);
+                });
+            }
+        }).catch((error) => {
+                console.log("Error getting document:", error);
+        });
+    }
+
     saveNotes() {
-      localStorage.setItem('notes', JSON.stringify(this.notes));
+      db.collection("users").doc(this.userId).set({
+        notes: this.notes
+      })
+        .then(() => {
+        console.log("Document written with ID: ");
+      })
+        .catch((error) => {
+        console.error("Error adding document: ", error);
+      });
     }
 
     render() {
